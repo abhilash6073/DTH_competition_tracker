@@ -48,6 +48,21 @@ interface ProgressEvent {
   count?: number;
 }
 
+function EmptyTabState({ onRun }: { onRun: () => void }) {
+  return (
+    <div className="rounded-xl border-2 border-dashed p-10 text-center space-y-3">
+      <Activity className="w-10 h-10 mx-auto text-muted-foreground/40" />
+      <p className="text-sm text-muted-foreground">
+        Run a report to populate this view.
+      </p>
+      <Button onClick={onRun} size="sm" variant="outline">
+        <Play className="w-3.5 h-3.5 mr-1.5" />
+        Run Daily Report
+      </Button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [report, setReport] = useState<ReportJSON | null>(null);
   const [status, setStatus] = useState<RunStatus>("idle");
@@ -262,26 +277,9 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Main content tabs */}
-        {status === "idle" && !report ? (
-          <div className="rounded-xl border-2 border-dashed p-12 text-center space-y-3">
-            <Activity className="w-12 h-12 mx-auto text-muted-foreground/40" />
-            <h2 className="text-lg font-semibold">
-              Daily Intelligence Report
-            </h2>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Click &ldquo;Run Daily Report&rdquo; to generate a comprehensive D2H + OTT
-              competitor analysis for Tata Play. The report covers news, pack
-              comparisons, deactivation correlations, and strategic
-              recommendations.
-            </p>
-            <Button onClick={runReport} className="mt-2">
-              <Play className="w-4 h-4 mr-2" />
-              Run Daily Report
-            </Button>
-          </div>
-        ) : report ? (
-          <Tabs defaultValue="news">
+        {/* Main content tabs — always visible */}
+        {true && (
+          <Tabs defaultValue={report ? "news" : "deactivations"}>
             <div className="flex items-center justify-between">
               <TabsList>
                 <TabsTrigger value="news">
@@ -302,43 +300,54 @@ export default function DashboardPage() {
                 </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-2">
-                {report.dataGaps.length > 0 && (
+                {report?.dataGaps && report.dataGaps.length > 0 && (
                   <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs">
                     <AlertTriangle className="w-3 h-3 mr-1" />
                     {report.dataGaps.length} data gaps
                   </Badge>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  Generated{" "}
-                  {new Date(report.generatedAt).toLocaleTimeString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                  })}{" "}
-                  IST
-                </span>
+                {report && (
+                  <span className="text-xs text-muted-foreground">
+                    Generated{" "}
+                    {new Date(report.generatedAt).toLocaleTimeString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                    })}{" "}
+                    IST
+                  </span>
+                )}
               </div>
             </div>
 
             <TabsContent value="news" className="mt-4">
-              <CompetitorNewsWidget
-                items={report.competitor_news}
-                maxItems={15}
-              />
+              {report ? (
+                <CompetitorNewsWidget items={report.competitor_news} maxItems={15} />
+              ) : (
+                <EmptyTabState onRun={runReport} />
+              )}
             </TabsContent>
 
             <TabsContent value="packs" className="mt-4">
-              <PricingTable packs={report.plans_and_packs} />
+              {report ? (
+                <PricingTable packs={report.plans_and_packs} />
+              ) : (
+                <EmptyTabState onRun={runReport} />
+              )}
             </TabsContent>
 
             <TabsContent value="deactivations" className="mt-4 space-y-6">
-              <IndiaDeactivationMap correlations={report.events_correlation ?? []} />
-              <DeactivationChart correlations={report.events_correlation} />
+              <IndiaDeactivationMap correlations={report?.events_correlation ?? []} />
+              {report && <DeactivationChart correlations={report.events_correlation} />}
             </TabsContent>
 
             <TabsContent value="recommendations" className="mt-4">
-              <RecommendationsList recommendations={report.recommendations} />
+              {report ? (
+                <RecommendationsList recommendations={report.recommendations} />
+              ) : (
+                <EmptyTabState onRun={runReport} />
+              )}
             </TabsContent>
           </Tabs>
-        ) : null}
+        )}
 
         {/* Data gaps footer */}
         {report && report.dataGaps.length > 0 && (
