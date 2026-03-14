@@ -37,8 +37,8 @@ export function DeactivationChart({ correlations }: Props) {
         <span className="text-xs text-muted-foreground">{correlations.length} events</span>
       </div>
 
-      <div className="divide-y divide-border/50 max-h-96 overflow-y-auto">
-        {correlations.slice(0, 10).map((c) => {
+      <div className="divide-y divide-border/50 max-h-[600px] overflow-y-auto">
+        {correlations.map((c) => {
           const cfg = CONFIDENCE_CONFIG[c.confidence] ?? CONFIDENCE_CONFIG.low;
           const delta = c.deactivationDelta;
           const isSpike = delta > 0;

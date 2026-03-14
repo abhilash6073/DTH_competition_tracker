@@ -494,7 +494,7 @@ export default function DashboardPage() {
 
           <TabsContent value="news" className="mt-4">
             {newsLoading ? <TabLoadingSkeleton /> :
-             displayNews.length > 0 ? <CompetitorNewsWidget items={displayNews} maxItems={15} /> :
+             displayNews.length > 0 ? <CompetitorNewsWidget items={displayNews} /> :
              <EmptyTabState onRun={runReport} />}
           </TabsContent>
 

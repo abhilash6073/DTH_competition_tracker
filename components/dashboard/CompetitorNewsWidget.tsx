@@ -33,13 +33,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 interface Props {
   items: CompetitorNewsItem[];
-  maxItems?: number;
 }
 
-export function CompetitorNewsWidget({ items, maxItems = 8 }: Props) {
-  const visible = items.slice(0, maxItems);
-
-  if (visible.length === 0) {
+export function CompetitorNewsWidget({ items }: Props) {
+  if (items.length === 0) {
     return (
       <div className="rounded-xl border border-border/70 bg-card p-8 text-center">
         <p className="text-sm text-muted-foreground">No news found in the time window.</p>
@@ -54,8 +51,8 @@ export function CompetitorNewsWidget({ items, maxItems = 8 }: Props) {
         <span className="text-xs text-muted-foreground">{items.length} items</span>
       </div>
 
-      <div className="divide-y divide-border/50 max-h-[560px] overflow-y-auto">
-        {visible.map((item) => {
+      <div className="divide-y divide-border/50 max-h-[720px] overflow-y-auto">
+        {items.map((item) => {
           const styles = SENTIMENT_STYLES[item.sentiment] ?? SENTIMENT_STYLES.neutral;
           return (
             <div key={item.id} className="flex hover:bg-muted/30 transition-colors group">

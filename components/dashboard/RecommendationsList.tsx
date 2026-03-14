@@ -51,7 +51,7 @@ export function RecommendationsList({ recommendations }: Props) {
       </div>
 
       <div className="divide-y divide-border/50">
-        {recommendations.slice(0, 8).map((rec, i) => {
+        {recommendations.map((rec, i) => {
           const cfg = PRIORITY_CONFIG[rec.priority] ?? PRIORITY_CONFIG.low;
           return (
             <div key={rec.id} className="flex hover:bg-muted/20 transition-colors">
