@@ -310,44 +310,48 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+      {/* Header — dark navy premium */}
+      <header className="sticky top-0 z-40 bg-[#07101f] border-b border-white/[0.06] shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          {/* Logo + wordmark */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-900/50">
               <Activity className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-bold">Tata Play Intelligence</h1>
-              <p className="text-xs text-muted-foreground">D2H + OTT Competitor Tracker</p>
+              <h1 className="text-sm font-bold text-white leading-tight">Tata Play Intelligence</h1>
+              <p className="text-[11px] text-white/40 leading-tight">D2H · OTT · Competitor Tracker</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Time window selector */}
-            <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
-              {WINDOW_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setWindowDays(opt.value)}
-                  disabled={status === "running"}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                    windowDays === opt.value
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+
+          {/* Center: time window pill selector */}
+          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5">
+            {WINDOW_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setWindowDays(opt.value)}
+                disabled={status === "running"}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  windowDays === opt.value
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-white/50 hover:text-white/80"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Right: actions */}
+          <div className="flex items-center gap-2 shrink-0">
             {report && (
-              <PDFDownloadButton reportId={report.reportId} className="h-8 text-xs" />
+              <PDFDownloadButton reportId={report.reportId} className="h-8 text-xs border-white/20 text-white/80 bg-white/5 hover:bg-white/10" />
             )}
             <Button
               onClick={runReport}
               disabled={status === "running"}
               size="sm"
-              className="h-8"
+              className="h-8 bg-blue-600 hover:bg-blue-500 text-white border-0 shadow shadow-blue-900/50"
             >
               {status === "running" ? (
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
@@ -391,6 +395,7 @@ export default function DashboardPage() {
             badge={status === "done" ? "Live" : status === "running" ? "Streaming" : undefined}
             badgeVariant="secondary"
             tooltip="Competitor news items tracked across DTH, OTT, and ISP operators."
+            accentColor="bg-blue-500"
           />
           <MetricCard
             title="Top Threat"
@@ -399,6 +404,7 @@ export default function DashboardPage() {
             icon={<Shield className="w-3.5 h-3.5" />}
             trend={(topThreat?.pmAnalysis.threatScoreToTataPlay ?? 0) >= 7 ? "down" : "neutral"}
             tooltip="Highest threat score from competitor product launches."
+            accentColor="bg-red-500"
           />
           <MetricCard
             title="Packs Analyzed"
@@ -406,6 +412,7 @@ export default function DashboardPage() {
             subtitle="Across all regions"
             icon={<PackageSearch className="w-3.5 h-3.5" />}
             tooltip="Subscription packs retrieved and compared across DTH operators."
+            accentColor="bg-violet-500"
           />
           <MetricCard
             title="Deactivation Signals"
@@ -413,6 +420,7 @@ export default function DashboardPage() {
             subtitle="Event correlations"
             icon={<TrendingDown className="w-3.5 h-3.5" />}
             tooltip="External events correlated with deactivation patterns."
+            accentColor="bg-amber-500"
           />
           <MetricCard
             title="Quality Score"
@@ -420,38 +428,49 @@ export default function DashboardPage() {
             subtitle="Report completeness"
             icon={<Star className="w-3.5 h-3.5" />}
             tooltip="Internal quality score based on data coverage and completeness."
+            accentColor="bg-emerald-500"
           />
         </div>
 
         {/* Tabs — always visible */}
         <Tabs defaultValue="deactivations">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <TabsList>
-              <TabsTrigger value="news">
-                <Newspaper className="w-3.5 h-3.5 mr-1.5" />
+          <div className="flex items-center justify-between flex-wrap gap-3 pb-1">
+            <TabsList className="h-9 p-1 gap-0.5">
+              <TabsTrigger value="news" className="h-7 px-3 text-xs gap-1.5">
+                <Newspaper className="w-3.5 h-3.5" />
                 News
                 {displayNews.length > 0 && (
-                  <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-full px-1.5 py-0.5 font-medium">
+                  <span className="text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0 font-semibold tabular-nums">
                     {displayNews.length}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="packs">
-                <PackageSearch className="w-3.5 h-3.5 mr-1.5" />
+              <TabsTrigger value="packs" className="h-7 px-3 text-xs gap-1.5">
+                <PackageSearch className="w-3.5 h-3.5" />
                 Packs
                 {displayPacks.length > 0 && (
-                  <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-full px-1.5 py-0.5 font-medium">
+                  <span className="text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0 font-semibold tabular-nums">
                     {displayPacks.length}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="deactivations">
-                <TrendingDown className="w-3.5 h-3.5 mr-1.5" />
+              <TabsTrigger value="deactivations" className="h-7 px-3 text-xs gap-1.5">
+                <TrendingDown className="w-3.5 h-3.5" />
                 Deactivations
+                {displayCorrelations.length > 0 && (
+                  <span className="text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0 font-semibold tabular-nums">
+                    {displayCorrelations.length}
+                  </span>
+                )}
               </TabsTrigger>
-              <TabsTrigger value="recommendations">
-                <Lightbulb className="w-3.5 h-3.5 mr-1.5" />
+              <TabsTrigger value="recommendations" className="h-7 px-3 text-xs gap-1.5">
+                <Lightbulb className="w-3.5 h-3.5" />
                 Recommendations
+                {report?.recommendations?.length ? (
+                  <span className="text-[10px] bg-primary/15 text-primary rounded-full px-1.5 py-0 font-semibold tabular-nums">
+                    {report.recommendations.length}
+                  </span>
+                ) : null}
               </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
@@ -462,7 +481,7 @@ export default function DashboardPage() {
                 </Badge>
               )}
               {report && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[11px] text-muted-foreground">
                   Generated{" "}
                   {new Date(report.generatedAt).toLocaleTimeString("en-IN", {
                     timeZone: "Asia/Kolkata",
