@@ -49,20 +49,37 @@ export async function runOrchestrator(
 
   emit({ type: "run_started", data: { config: runConfig } });
 
-  // ── Phase 1: All agents in parallel ─────────────────────────
-  const phase1Tasks = [
-    { taskId: "news_dth",    agentName: "NewsSentimentAgent[DTH]" },
-    { taskId: "news_ott",    agentName: "NewsSentimentAgent[OTT]" },
-    { taskId: "news_isp",    agentName: "NewsSentimentAgent[ISP]" },
-    { taskId: "pm_dth",      agentName: "PMAnalystAgent[DTH]" },
-    { taskId: "pm_ott",      agentName: "PMAnalystAgent[OTT]" },
-    { taskId: "pricing",     agentName: "PricingAgent" },
-    { taskId: "deactivation",agentName: "DeactivationAgent" },
+  // Emit task_started for all 7 agents
+  const phase1Meta = [
+    { taskId: "news_dth",     agentName: "NewsSentimentAgent[DTH]" },
+    { taskId: "news_ott",     agentName: "NewsSentimentAgent[OTT]" },
+    { taskId: "news_isp",     agentName: "NewsSentimentAgent[ISP]" },
+    { taskId: "pm_dth",       agentName: "PMAnalystAgent[DTH]" },
+    { taskId: "pm_ott",       agentName: "PMAnalystAgent[OTT]" },
+    { taskId: "pricing",      agentName: "PricingAgent" },
+    { taskId: "deactivation", agentName: "DeactivationAgent" },
   ];
-
-  phase1Tasks.forEach(({ taskId, agentName }) =>
+  phase1Meta.forEach(({ taskId, agentName }) =>
     emit({ type: "task_started", taskId, agentName })
   );
+
+  // ── Phase 1: wrap each agent so it emits task_completed with data
+  //    immediately when it finishes — not as a batch at the end
+  function wrapAgent<T>(
+    promise: Promise<T>,
+    taskId: string,
+    agentName: string,
+    fallback: T,
+    getData: (r: T) => unknown
+  ): Promise<T> {
+    return promise.then((result) => {
+      emit({ type: "task_completed", taskId, agentName, data: getData(result) });
+      return result;
+    }).catch((e) => {
+      emit({ type: "task_failed", taskId, agentName, error: String(e) });
+      return fallback;
+    });
+  }
 
   const [
     newsDTH,
@@ -73,34 +90,20 @@ export async function runOrchestrator(
     pricingResult,
     deactivationResult,
   ] = await Promise.all([
-    runNewsSentimentAgent(runConfig, "dth").catch((e) => {
-      emit({ type: "task_failed", taskId: "news_dth", error: String(e) });
-      return { items: [], gaps: [] };
-    }),
-    runNewsSentimentAgent(runConfig, "ott").catch((e) => {
-      emit({ type: "task_failed", taskId: "news_ott", error: String(e) });
-      return { items: [], gaps: [] };
-    }),
-    runNewsSentimentAgent(runConfig, "isp").catch((e) => {
-      emit({ type: "task_failed", taskId: "news_isp", error: String(e) });
-      return { items: [], gaps: [] };
-    }),
-    runPMAnalystAgent(runConfig, "dth").catch((e) => {
-      emit({ type: "task_failed", taskId: "pm_dth", error: String(e) });
-      return { items: [], gaps: [] };
-    }),
-    runPMAnalystAgent(runConfig, "ott").catch((e) => {
-      emit({ type: "task_failed", taskId: "pm_ott", error: String(e) });
-      return { items: [], gaps: [] };
-    }),
-    runPricingAgent(runConfig).catch((e) => {
-      emit({ type: "task_failed", taskId: "pricing", error: String(e) });
-      return { packs: [], gaps: [] };
-    }),
-    runDeactivationAgent(runConfig).catch((e) => {
-      emit({ type: "task_failed", taskId: "deactivation", error: String(e) });
-      return { correlations: [], gaps: [] };
-    }),
+    wrapAgent(runNewsSentimentAgent(runConfig, "dth"), "news_dth", "NewsSentimentAgent[DTH]",
+      { items: [], gaps: [] }, (r) => ({ count: r.items.length, items: r.items })),
+    wrapAgent(runNewsSentimentAgent(runConfig, "ott"), "news_ott", "NewsSentimentAgent[OTT]",
+      { items: [], gaps: [] }, (r) => ({ count: r.items.length, items: r.items })),
+    wrapAgent(runNewsSentimentAgent(runConfig, "isp"), "news_isp", "NewsSentimentAgent[ISP]",
+      { items: [], gaps: [] }, (r) => ({ count: r.items.length, items: r.items })),
+    wrapAgent(runPMAnalystAgent(runConfig, "dth"), "pm_dth", "PMAnalystAgent[DTH]",
+      { items: [], gaps: [] }, (r) => ({ count: r.items.length, items: r.items })),
+    wrapAgent(runPMAnalystAgent(runConfig, "ott"), "pm_ott", "PMAnalystAgent[OTT]",
+      { items: [], gaps: [] }, (r) => ({ count: r.items.length, items: r.items })),
+    wrapAgent(runPricingAgent(runConfig), "pricing", "PricingAgent",
+      { packs: [], gaps: [] }, (r) => ({ count: r.packs.length, packs: r.packs })),
+    wrapAgent(runDeactivationAgent(runConfig), "deactivation", "DeactivationAgent",
+      { correlations: [], gaps: [] }, (r) => ({ count: r.correlations.length, correlations: r.correlations })),
   ]);
 
   // Merge news and PM results
@@ -114,21 +117,6 @@ export async function runOrchestrator(
       (a, b) => b.pmAnalysis.threatScoreToTataPlay - a.pmAnalysis.threatScoreToTataPlay
     ),
   };
-
-  phase1Tasks.forEach(({ taskId, agentName }) =>
-    emit({
-      type: "task_completed",
-      taskId,
-      agentName,
-      data: taskId.startsWith("news")
-        ? { count: taskId === "news_dth" ? newsDTH.items.length : taskId === "news_ott" ? newsOTT.items.length : newsISP.items.length }
-        : taskId.startsWith("pm")
-        ? { count: taskId === "pm_dth" ? pmDTH.items.length : pmOTT.items.length }
-        : taskId === "pricing"
-        ? { count: pricingResult.packs.length }
-        : { count: deactivationResult.correlations.length },
-    })
-  );
 
   // ── Phase 2: Report generation ────────────────────────────────
   emit({ type: "task_started", taskId: "report_generation", agentName: "ReportAgent" });
