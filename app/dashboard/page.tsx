@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { ReportJSON, SSEEvent, RunConfig } from "@/agents/types";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { CompetitorNewsWidget } from "@/components/dashboard/CompetitorNewsWidget";
@@ -12,7 +13,19 @@ import { PDFDownloadButton } from "@/components/report/PDFDownloadButton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const IndiaDeactivationMap = dynamic(
+  () =>
+    import("@/components/dashboard/IndiaDeactivationMap").then(
+      (m) => m.IndiaDeactivationMap
+    ),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="w-full h-[500px] rounded-xl" />,
+  }
+);
 import {
   Play,
   Loader2,
@@ -316,7 +329,8 @@ export default function DashboardPage() {
               <PricingTable packs={report.plans_and_packs} />
             </TabsContent>
 
-            <TabsContent value="deactivations" className="mt-4">
+            <TabsContent value="deactivations" className="mt-4 space-y-6">
+              <IndiaDeactivationMap correlations={report.events_correlation ?? []} />
               <DeactivationChart correlations={report.events_correlation} />
             </TabsContent>
 
