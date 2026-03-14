@@ -112,9 +112,10 @@ function MapTooltip({ tooltip }: { tooltip: TooltipState | null }) {
 // ── Main component ─────────────────────────────────────────────
 interface IndiaDeactivationMapProps {
   correlations: EventCorrelation[];
+  isLoading?: boolean;
 }
 
-export function IndiaDeactivationMap({ correlations }: IndiaDeactivationMapProps) {
+export function IndiaDeactivationMap({ correlations, isLoading }: IndiaDeactivationMapProps) {
   const [geoData, setGeoData] = useState<unknown>(null);
   const [activeTypes, setActiveTypes] = useState<Set<EventType>>(
     new Set(ALL_EVENT_TYPES)
@@ -188,11 +189,16 @@ export function IndiaDeactivationMap({ correlations }: IndiaDeactivationMapProps
       {/* Filter bar */}
       <FilterBar active={activeTypes} onToggle={toggleType} />
 
-      {/* Empty state */}
-      {correlations.length === 0 && (
+      {/* Loading / empty state */}
+      {correlations.length === 0 && !isLoading && (
         <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
           Run a report to populate the map with deactivation correlations.
         </div>
+      )}
+      {isLoading && (
+        <p className="text-xs text-muted-foreground animate-pulse">
+          Agents are analysing regions — map will populate as each finishes…
+        </p>
       )}
 
       {/* Map */}
@@ -210,8 +216,10 @@ export function IndiaDeactivationMap({ correlations }: IndiaDeactivationMapProps
                 const props = geo.properties as Record<string, string>;
                 const code = resolveGeoCode(props);
                 const stateName = props.NAME_1 ?? "Unknown";
+                const hasData = code ? stateDataMap.has(code) : false;
                 const fill = code ? getStateColor(code, stateDataMap) : COLOR_NO_DATA;
                 const isSelected = code === selectedStateCode;
+                const isPending = isLoading && !hasData;
 
                 return (
                   <Geography
@@ -223,7 +231,7 @@ export function IndiaDeactivationMap({ correlations }: IndiaDeactivationMapProps
                     style={{
                       default: {
                         outline: "none",
-                        opacity: 1,
+                        opacity: isPending ? undefined : 1,
                       },
                       hover: {
                         outline: "none",
@@ -236,7 +244,7 @@ export function IndiaDeactivationMap({ correlations }: IndiaDeactivationMapProps
                         outline: "none",
                       },
                     }}
-                    className={isSelected ? "ring-2 ring-blue-500" : ""}
+                    className={`${isSelected ? "ring-2 ring-blue-500" : ""} ${isPending ? "animate-pulse" : ""}`}
                     onMouseEnter={(evt: React.MouseEvent) => {
                       setTooltip({
                         x: evt.clientX,

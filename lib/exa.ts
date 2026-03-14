@@ -1,20 +1,26 @@
 // ============================================================
-// lib/exa.ts — Exa.ai client wrapper
-// EXA_API_KEY is never printed/logged.
+// lib/exa.ts — Exa.ai client wrapper with Tavily fallback
+// EXA_API_KEY and TAVILY_API_KEY are never printed/logged.
 // ============================================================
 import Exa from "exa-js";
+import { tavily } from "@tavily/core";
 import { logSource, EXA_NO_RESULTS } from "@/agents/utils";
 
 // Lazily initialised so tests can run without the env var
 let _client: Exa | null = null;
 
-function getClient(): Exa {
-  if (!_client) {
-    const key = process.env.EXA_API_KEY;
-    if (!key) throw new Error("EXA_API_KEY is not set");
-    _client = new Exa(key);
+function getClient(): Exa | null {
+  try {
+    if (!_client) {
+      const key = process.env.EXA_API_KEY;
+      if (!key) return null;
+      _client = new Exa(key);
+    }
+    return _client;
+  } catch (e) {
+    console.error("[Exa] Failed to initialize client:", e);
+    return null;
   }
-  return _client;
 }
 
 export interface ExaSearchOptions {
@@ -37,17 +43,68 @@ export interface ExaResult {
   highlights?: string[];
   summary?: string;
   score?: number;
+  provider?: "exa" | "tavily";
 }
 
 export interface ExaSearchResponse {
   results: ExaResult[];
   noResults: boolean;
   rawQuery: string;
+  provider: "exa" | "tavily";
+}
+
+/**
+ * Fallback search using Tavily SDK.
+ */
+async function tavilySearchFallback(
+  query: string,
+  numResults: number = 10,
+  agentName: string = "unknown"
+): Promise<ExaSearchResponse> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) {
+    console.warn("[Tavily] Fallback failed: TAVILY_API_KEY not found");
+    return { results: [], noResults: true, rawQuery: query, provider: "exa" };
+  }
+
+  try {
+    const tvly = tavily({ apiKey });
+    const response = await tvly.search(query, {
+      searchDepth: "advanced",
+      maxResults: numResults,
+    });
+
+
+    const results: ExaResult[] = (response.results || []).map((r: any) => ({
+      id: r.url,
+      url: r.url,
+      title: r.title,
+      text: r.content,
+      summary: r.content,
+      publishedDate: r.publishedDate, // Check if this matches Tavily SDK's property
+      score: r.score,
+      provider: "tavily",
+    }));
+
+    for (const r of results) {
+      logSource(r.url, query, r.summary?.slice(0, 200) || "", agentName);
+    }
+
+    return {
+      results,
+      noResults: results.length === 0,
+      rawQuery: query,
+      provider: "tavily",
+    };
+  } catch (err) {
+    console.error("[Tavily] Fallback search failed:", err);
+    return { results: [], noResults: true, rawQuery: query, provider: "tavily" };
+  }
 }
 
 /**
  * Primary search function. Routes all open-web retrieval through Exa.
- * Logs every call to the source audit trail.
+ * Falls back to Tavily if Exa fails or returns zero results.
  */
 export async function exaSearch(
   query: string,
@@ -56,67 +113,58 @@ export async function exaSearch(
   const {
     type = "auto",
     numResults = 10,
-    startPublishedDate,
-    endPublishedDate,
-    includeDomains,
-    excludeDomains,
     useAutoprompt = true,
     agentName = "unknown",
   } = options;
 
   const client = getClient();
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const searchParams: any = {
-      type,
-      numResults,
-      useAutoprompt,
-      contents: {
-        text: { maxCharacters: 2000 },
-        highlights: { numSentences: 3, highlightsPerUrl: 2 },
-        summary: { query },
-      },
-    };
+  if (client) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const searchParams: any = {
+        type,
+        numResults,
+        useAutoprompt,
+        contents: {
+          text: { maxCharacters: 2000 },
+          highlights: { numSentences: 3, highlightsPerUrl: 2 },
+          summary: { query },
+        },
+      };
 
-    if (startPublishedDate) searchParams.startPublishedDate = startPublishedDate;
-    if (endPublishedDate) searchParams.endPublishedDate = endPublishedDate;
-    if (includeDomains?.length) searchParams.includeDomains = includeDomains;
-    if (excludeDomains?.length) searchParams.excludeDomains = excludeDomains;
+      if (options.startPublishedDate) searchParams.startPublishedDate = options.startPublishedDate;
+      if (options.endPublishedDate) searchParams.endPublishedDate = options.endPublishedDate;
+      if (options.includeDomains?.length) searchParams.includeDomains = options.includeDomains;
+      if (options.excludeDomains?.length) searchParams.excludeDomains = options.excludeDomains;
 
-    const response = await client.searchAndContents(query, searchParams);
+      const response = await client.searchAndContents(query, searchParams);
+      const results: ExaResult[] = (response.results || []).map((r: any) => ({
+        id: r.id || "",
+        url: r.url || "",
+        title: r.title || "",
+        publishedDate: r.publishedDate,
+        text: r.text,
+        highlights: r.highlights,
+        summary: r.summary,
+        score: r.score,
+        provider: "exa",
+      }));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results: ExaResult[] = (response.results || []).map((r: any) => ({
-      id: r.id || "",
-      url: r.url || "",
-      title: r.title || "",
-      publishedDate: r.publishedDate,
-      text: r.text,
-      highlights: r.highlights,
-      summary: r.summary,
-      score: r.score,
-    }));
-
-    // Log each result to source audit
-    for (const r of results) {
-      logSource(
-        r.url,
-        query,
-        r.summary || r.highlights?.[0] || r.text?.slice(0, 200) || "",
-        agentName
-      );
+      if (results.length > 0) {
+        for (const r of results) {
+          logSource(r.url, query, r.summary || r.highlights?.[0] || r.text?.slice(0, 200) || "", agentName);
+        }
+        return { results, noResults: false, rawQuery: query, provider: "exa" };
+      }
+    } catch (err) {
+      console.error("[Exa] Primary search failed, attempting fallback:", err);
     }
-
-    return {
-      results,
-      noResults: results.length === 0,
-      rawQuery: query,
-    };
-  } catch (err) {
-    console.error("[Exa] Search failed for query:", query.slice(0, 80), err);
-    return { results: [], noResults: true, rawQuery: query };
   }
+
+  // Fallback to Tavily if Exa client missing, failed, or returned no results
+  console.log(`[Search] Primary search (Exa) yielded no results for "${query}", trying Tavily...`);
+  return tavilySearchFallback(query, numResults, agentName);
 }
 
 /**
@@ -141,7 +189,4 @@ export async function exaNewsSearch(
   });
 }
 
-/**
- * Returns the EXA_NO_RESULTS sentinel string for consistent gap reporting.
- */
 export { EXA_NO_RESULTS };

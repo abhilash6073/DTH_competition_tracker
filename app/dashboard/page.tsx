@@ -4,7 +4,6 @@ import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
   ReportJSON,
-  SSEEvent,
   RunConfig,
   CompetitorNewsItem,
   LaunchItem,
@@ -132,12 +131,16 @@ export default function DashboardPage() {
     setReport(null);
   };
 
+  // Deactivation region tracking
+  const deactivationRegionsRef = useRef<string[]>([]);
+  const deactivationDoneRef    = useRef(0);
+
   const runReport = useCallback(async () => {
     setStatus("running");
     setErrorMsg("");
     resetStreams();
 
-    const config: Partial<RunConfig> = {
+    const config: RunConfig = {
       regions_or_pincodes: ["400001", "560001", "110001", "600001", "700001"],
       news_time_window_days: windowDays,
       plans_time_window_days: windowDays,
@@ -145,40 +148,161 @@ export default function DashboardPage() {
       max_items_per_section: 10,
     };
 
-    // Mark all agents as waiting
+    // Derive mock region keys the deactivation agent will produce
+    const deactivationRegions = config.regions_or_pincodes.map(
+      (p) => `Region-${p.slice(0, 3)}`
+    );
+    deactivationRegionsRef.current = deactivationRegions;
+    deactivationDoneRef.current = 0;
+
+    // Mark all agents as running
     setAgentStates(
-      Object.fromEntries(AGENT_DEFS.map((a) => [a.id, "waiting" as AgentState]))
+      Object.fromEntries(AGENT_DEFS.map((a) => [a.id, "running" as AgentState]))
     );
 
-    try {
-      const res = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config }),
-      });
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No stream from server");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as SSEEvent;
-            handleSSEEvent(event);
-          } catch { /* skip malformed */ }
-        }
+    async function callAgent<T>(
+      url: string,
+      body: Record<string, unknown>,
+      onSuccess: (data: T) => void,
+      taskId: string
+    ) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data: T = await res.json();
+        onSuccess(data);
+        setAgentStates((prev) => ({ ...prev, [taskId]: "done" }));
+        return data;
+      } catch (err) {
+        console.error(`[${taskId}]`, err);
+        setAgentStates((prev) => ({ ...prev, [taskId]: "failed" }));
+        return null;
       }
+    }
+
+    try {
+      // ── Phase 1: all agents in parallel ─────────────────────────────────────
+
+      const [newsDth, newsOtt, newsIsp, pmDth, pmOtt, pricingRes, ...deactivationResults] =
+        await Promise.all([
+          // News agents
+          callAgent<{ items: CompetitorNewsItem[] }>(
+            "/api/agents/news", { config, category: "dth" }, (d) => {
+              setStreamedNews((prev) => [...prev, ...d.items].sort((a, b) => b.relevanceScore - a.relevanceScore));
+              setAgentCounts((prev) => ({ ...prev, news_dth: d.items.length }));
+              d.items.slice(0, 2).forEach((item) =>
+                addToFeed({ agentLabel: "DTH", text: `${item.entity}: ${item.title}`, tag: item.sentiment === "negative" ? "⚠ negative" : undefined, tagColor: "text-red-500" })
+              );
+            }, "news_dth"
+          ),
+          callAgent<{ items: CompetitorNewsItem[] }>(
+            "/api/agents/news", { config, category: "ott" }, (d) => {
+              setStreamedNews((prev) => [...prev, ...d.items].sort((a, b) => b.relevanceScore - a.relevanceScore));
+              setAgentCounts((prev) => ({ ...prev, news_ott: d.items.length }));
+              d.items.slice(0, 2).forEach((item) =>
+                addToFeed({ agentLabel: "OTT", text: `${item.entity}: ${item.title}`, tag: item.sentiment === "negative" ? "⚠ negative" : undefined, tagColor: "text-red-500" })
+              );
+            }, "news_ott"
+          ),
+          callAgent<{ items: CompetitorNewsItem[] }>(
+            "/api/agents/news", { config, category: "isp" }, (d) => {
+              setStreamedNews((prev) => [...prev, ...d.items].sort((a, b) => b.relevanceScore - a.relevanceScore));
+              setAgentCounts((prev) => ({ ...prev, news_isp: d.items.length }));
+              d.items.slice(0, 2).forEach((item) =>
+                addToFeed({ agentLabel: "ISP", text: `${item.entity}: ${item.title}`, tag: item.sentiment === "negative" ? "⚠ negative" : undefined, tagColor: "text-red-500" })
+              );
+            }, "news_isp"
+          ),
+
+          // PM agents
+          callAgent<{ items: LaunchItem[] }>(
+            "/api/agents/pm", { config, category: "dth" }, (d) => {
+              setStreamedLaunches((prev) => [...prev, ...d.items].sort((a, b) => b.pmAnalysis.threatScoreToTataPlay - a.pmAnalysis.threatScoreToTataPlay));
+              setAgentCounts((prev) => ({ ...prev, pm_dth: d.items.length }));
+              d.items.slice(0, 2).forEach((item) =>
+                addToFeed({ agentLabel: "DTH PM", text: `${item.entity}: ${item.title}`, tag: `⚠ Threat ${item.pmAnalysis.threatScoreToTataPlay}/10`, tagColor: item.pmAnalysis.threatScoreToTataPlay >= 7 ? "text-red-500" : "text-amber-500" })
+              );
+            }, "pm_dth"
+          ),
+          callAgent<{ items: LaunchItem[] }>(
+            "/api/agents/pm", { config, category: "ott" }, (d) => {
+              setStreamedLaunches((prev) => [...prev, ...d.items].sort((a, b) => b.pmAnalysis.threatScoreToTataPlay - a.pmAnalysis.threatScoreToTataPlay));
+              setAgentCounts((prev) => ({ ...prev, pm_ott: d.items.length }));
+              d.items.slice(0, 2).forEach((item) =>
+                addToFeed({ agentLabel: "OTT PM", text: `${item.entity}: ${item.title}`, tag: `⚠ Threat ${item.pmAnalysis.threatScoreToTataPlay}/10`, tagColor: item.pmAnalysis.threatScoreToTataPlay >= 7 ? "text-red-500" : "text-amber-500" })
+              );
+            }, "pm_ott"
+          ),
+
+          // Pricing
+          callAgent<{ packs: PlansPack[] }>(
+            "/api/agents/pricing", { config }, (d) => {
+              setStreamedPacks(d.packs);
+              setAgentCounts((prev) => ({ ...prev, pricing: d.packs.length }));
+              d.packs.slice(0, 2).forEach((p) =>
+                addToFeed({ agentLabel: "Pricing", text: `${p.operator} — ${p.packName} ₹${p.monthlyPrice}/mo` })
+              );
+            }, "pricing"
+          ),
+
+          // Deactivation: one call per region — progressive map population
+          ...deactivationRegions.map((region) =>
+            callAgent<{ correlations: EventCorrelation[] }>(
+              "/api/agents/deactivation", { config, region }, (d) => {
+                setStreamedCorrelations((prev) => [...prev, ...d.correlations]);
+                deactivationDoneRef.current += 1;
+                const done = deactivationDoneRef.current;
+                const total = deactivationRegionsRef.current.length;
+                setAgentCounts((prev) => ({ ...prev, deactivation: (prev.deactivation ?? 0) + d.correlations.length }));
+                d.correlations.slice(0, 1).forEach((c) =>
+                  addToFeed({
+                    agentLabel: `Deactivation (${done}/${total})`,
+                    text: `${c.event.name} → ${c.deactivationDelta > 0 ? "+" : ""}${c.deactivationDelta}% in ${c.affectedRegion}`,
+                    tag: c.confidence === "high" ? "high confidence" : undefined,
+                    tagColor: "text-blue-500",
+                  })
+                );
+                if (done === total) {
+                  setAgentStates((prev) => ({ ...prev, deactivation: "done" }));
+                }
+              }, "deactivation"
+            )
+          ),
+        ]);
+
+      // ── Phase 2: report synthesis ────────────────────────────────────────────
+
+      // Collect all accumulated data from state reads (use latest values via functional updates)
+      const allNews: CompetitorNewsItem[] = [
+        ...(newsDth?.items ?? []),
+        ...(newsOtt?.items ?? []),
+        ...(newsIsp?.items ?? []),
+      ].sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+      const allLaunches: LaunchItem[] = [
+        ...(pmDth?.items ?? []),
+        ...(pmOtt?.items ?? []),
+      ].sort((a, b) => b.pmAnalysis.threatScoreToTataPlay - a.pmAnalysis.threatScoreToTataPlay);
+
+      const allPacks: PlansPack[] = pricingRes?.packs ?? [];
+
+      const allCorrelations: EventCorrelation[] = deactivationResults
+        .flatMap((r) => r?.correlations ?? []);
+
+      addToFeed({ agentLabel: "Report", text: "Synthesising final report…" });
+
+      await callAgent<ReportJSON>(
+        "/api/agents/report",
+        { config, news: allNews, launches: allLaunches, packs: allPacks, correlations: allCorrelations },
+        (reportData) => {
+          setReport(reportData);
+          addToFeed({ agentLabel: "Report", text: "Final report synthesised ✓" });
+        },
+        "report_generation"
+      );
 
       setStatus("done");
     } catch (err) {
@@ -187,99 +311,6 @@ export default function DashboardPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowDays]);
-
-  function handleSSEEvent(event: SSEEvent) {
-    const taskId = event.taskId ?? "";
-
-    if (event.type === "task_started") {
-      setAgentStates((prev) => ({ ...prev, [taskId]: "running" }));
-    }
-
-    if (event.type === "task_failed") {
-      setAgentStates((prev) => ({ ...prev, [taskId]: "failed" }));
-    }
-
-    if (event.type === "task_completed") {
-      const d = event.data as Record<string, unknown>;
-      const count = (d.count as number) ?? 0;
-
-      setAgentStates((prev) => ({ ...prev, [taskId]: "done" }));
-      setAgentCounts((prev) => ({ ...prev, [taskId]: count }));
-
-      // Accumulate partial data & push to live feed
-      if ((taskId === "news_dth" || taskId === "news_ott" || taskId === "news_isp") && d.items) {
-        const items = d.items as CompetitorNewsItem[];
-        setStreamedNews((prev) => {
-          const merged = [...prev, ...items].sort((a, b) => b.relevanceScore - a.relevanceScore);
-          return merged;
-        });
-        items.slice(0, 2).forEach((item) =>
-          addToFeed({
-            agentLabel: taskId === "news_dth" ? "DTH" : taskId === "news_ott" ? "OTT" : "ISP",
-            text: `${item.entity}: ${item.title}`,
-            tag: item.sentiment === "negative" ? "⚠ negative" : undefined,
-            tagColor: "text-red-500",
-          })
-        );
-      }
-
-      if ((taskId === "pm_dth" || taskId === "pm_ott") && d.items) {
-        const items = d.items as LaunchItem[];
-        setStreamedLaunches((prev) => {
-          const merged = [...prev, ...items].sort(
-            (a, b) => b.pmAnalysis.threatScoreToTataPlay - a.pmAnalysis.threatScoreToTataPlay
-          );
-          return merged;
-        });
-        items.slice(0, 2).forEach((item) =>
-          addToFeed({
-            agentLabel: taskId === "pm_dth" ? "DTH PM" : "OTT PM",
-            text: `${item.entity}: ${item.title}`,
-            tag: `⚠ Threat ${item.pmAnalysis.threatScoreToTataPlay}/10`,
-            tagColor: item.pmAnalysis.threatScoreToTataPlay >= 7 ? "text-red-500" : "text-amber-500",
-          })
-        );
-      }
-
-      if (taskId === "pricing" && d.packs) {
-        const packs = d.packs as PlansPack[];
-        setStreamedPacks(packs);
-        packs.slice(0, 2).forEach((p) =>
-          addToFeed({
-            agentLabel: "Pricing",
-            text: `${p.operator} — ${p.packName} ₹${p.monthlyPrice}/mo`,
-          })
-        );
-      }
-
-      if (taskId === "deactivation" && d.correlations) {
-        const corrs = d.correlations as EventCorrelation[];
-        setStreamedCorrelations(corrs);
-        corrs.slice(0, 2).forEach((c) =>
-          addToFeed({
-            agentLabel: "Deactivation",
-            text: `${c.event.name} → ${c.deactivationDelta > 0 ? "+" : ""}${c.deactivationDelta}% in ${c.affectedRegion}`,
-            tag: c.confidence === "high" ? "high confidence" : undefined,
-            tagColor: "text-blue-500",
-          })
-        );
-      }
-
-      if (taskId === "report_generation") {
-        addToFeed({ agentLabel: "Report", text: "Final report synthesised ✓" });
-      }
-    }
-
-    if (event.type === "run_complete" && event.data) {
-      const d = event.data as { report?: ReportJSON };
-      if (d.report) setReport(d.report);
-    }
-
-    if (event.type === "error") {
-      setErrorMsg(event.error || "Unknown error");
-      setStatus("error");
-    }
-  }
 
   // Data to render: prefer final report, fall back to streamed partial data
   const displayNews          = report?.competitor_news     ?? streamedNews;
@@ -505,7 +536,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="deactivations" className="mt-4 space-y-6">
-            <IndiaDeactivationMap correlations={displayCorrelations} />
+            <IndiaDeactivationMap correlations={displayCorrelations} isLoading={deactivationLoading} />
             {deactivationLoading && <TabLoadingSkeleton />}
             {displayCorrelations.length > 0 && (
               <DeactivationChart correlations={displayCorrelations} />

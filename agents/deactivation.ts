@@ -40,10 +40,12 @@ async function buildExternalEvents(
   region: string,
   windowDays: number
 ): Promise<ExternalEvent[]> {
-  const events: ExternalEvent[] = [];
+  const results = await Promise.all(
+    EVENT_TYPES.map((et) => fetchExternalEvents(et.query, region, windowDays).then((raw) => ({ et, raw })))
+  );
 
-  for (const et of EVENT_TYPES) {
-    const raw = await fetchExternalEvents(et.query, region, windowDays);
+  const events: ExternalEvent[] = [];
+  for (const { et, raw } of results) {
     if (raw.noResults) continue;
 
     for (const result of raw.results.slice(0, 3)) {
@@ -147,7 +149,8 @@ function generateMockDeactivationData(
 
 export async function runDeactivationAgent(
   config: RunConfig,
-  internalData?: DeactivationDataPoint[]
+  internalData?: DeactivationDataPoint[],
+  targetRegion?: string
 ): Promise<{ correlations: EventCorrelation[]; gaps: DataGap[] }> {
   reactLog({
     thought: `Starting Deactivation Correlation Agent for ${config.deactivation_window_days} days.`,
@@ -173,9 +176,12 @@ export async function runDeactivationAgent(
   }
 
   const correlations: EventCorrelation[] = [];
-  const uniqueRegions = [...new Set(deactivationData.map((d) => d.region))];
+  const allRegions = [...new Set(deactivationData.map((d) => d.region))];
+  const uniqueRegions = targetRegion
+    ? allRegions.filter((r) => r === targetRegion)
+    : allRegions.slice(0, 5);
 
-  for (const region of uniqueRegions.slice(0, 5)) {
+  for (const region of uniqueRegions) {
     reactLog({
       thought: `Building external events for region: ${region}`,
       action: `fetchExternalEvents for ${region}`,
