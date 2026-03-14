@@ -12,12 +12,14 @@ export interface UnifiedSearchResult {
   content: string;
   score?: number;
   publishedDate?: string;
-  provider: "exa" | "tavily";
+  provider: "exa" | "tavily" | "google";
 }
+
 
 export interface UnifiedSearchResponse {
   results: UnifiedSearchResult[];
-  provider: "exa" | "tavily";
+  provider: "exa" | "tavily" | "google";
+
   query: string;
 }
 

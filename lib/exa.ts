@@ -43,15 +43,17 @@ export interface ExaResult {
   highlights?: string[];
   summary?: string;
   score?: number;
-  provider?: "exa" | "tavily";
+  provider?: "exa" | "tavily" | "google";
 }
+
 
 export interface ExaSearchResponse {
   results: ExaResult[];
   noResults: boolean;
   rawQuery: string;
-  provider: "exa" | "tavily";
+  provider: "exa" | "tavily" | "google";
 }
+
 
 /**
  * Fallback search using Tavily SDK.
@@ -101,6 +103,53 @@ async function tavilySearchFallback(
     return { results: [], noResults: true, rawQuery: query, provider: "tavily" };
   }
 }
+
+/**
+ * Fallback search using Google Custom Search API.
+ */
+async function googleSearchFallback(
+  query: string,
+  numResults: number = 10,
+  agentName: string = "unknown"
+): Promise<ExaSearchResponse> {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_SEARCH_CX;
+
+  if (!apiKey || !cx) {
+    console.warn("[Google] Fallback failed: GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX not found");
+    return { results: [], noResults: true, rawQuery: query, provider: "google" };
+  }
+
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=${numResults}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const results: ExaResult[] = (data.items || []).map((r: any) => ({
+      id: r.link,
+      url: r.link,
+      title: r.title,
+      text: r.snippet,
+      summary: r.snippet,
+      provider: "google",
+    }));
+
+    for (const r of results) {
+      logSource(r.url, query, r.summary || "", agentName);
+    }
+
+    return {
+      results,
+      noResults: results.length === 0,
+      rawQuery: query,
+      provider: "google",
+    };
+  } catch (err) {
+    console.error("[Google] Fallback search failed:", err);
+    return { results: [], noResults: true, rawQuery: query, provider: "google" };
+  }
+}
+
 
 /**
  * Primary search function. Routes all open-web retrieval through Exa.
@@ -162,10 +211,16 @@ export async function exaSearch(
     }
   }
 
-  // Fallback to Tavily if Exa client missing, failed, or returned no results
+  // Fallback chain: Tavily -> Google
   console.log(`[Search] Primary search (Exa) yielded no results for "${query}", trying Tavily...`);
-  return tavilySearchFallback(query, numResults, agentName);
+  const tavilyRes = await tavilySearchFallback(query, numResults, agentName);
+
+  if (!tavilyRes.noResults) return tavilyRes;
+
+  console.log(`[Search] Tavily fallback yielded no results for "${query}", trying Google...`);
+  return googleSearchFallback(query, numResults, agentName);
 }
+
 
 /**
  * News-specific search (uses Exa's neural search with recency bias).
