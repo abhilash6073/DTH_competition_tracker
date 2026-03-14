@@ -40,7 +40,7 @@ import {
   Star,
   Loader2,
 } from "lucide-react";
-import { generateSuggestedQuestions } from "@/agents/chatbot";
+import { generateSuggestedQuestions } from "@/agents/chatbot-client";
 
 const IndiaDeactivationMap = dynamic(
   () =>

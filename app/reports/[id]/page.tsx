@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { generateSuggestedQuestions } from "@/agents/chatbot";
+import { generateSuggestedQuestions } from "@/agents/chatbot-client";
 
 export default function ReportPage() {
   const { id } = useParams<{ id: string }>();
