@@ -63,11 +63,20 @@ function EmptyTabState({ onRun }: { onRun: () => void }) {
   );
 }
 
+const WINDOW_OPTIONS = [
+  { label: "1 day",   value: 1 },
+  { label: "3 days",  value: 3 },
+  { label: "7 days",  value: 7 },
+  { label: "14 days", value: 14 },
+  { label: "30 days", value: 30 },
+];
+
 export default function DashboardPage() {
   const [report, setReport] = useState<ReportJSON | null>(null);
   const [status, setStatus] = useState<RunStatus>("idle");
   const [progress, setProgress] = useState<ProgressEvent[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [windowDays, setWindowDays] = useState(7);
 
   const runReport = useCallback(async () => {
     setStatus("running");
@@ -76,9 +85,9 @@ export default function DashboardPage() {
 
     const config: Partial<RunConfig> = {
       regions_or_pincodes: ["400001", "560001", "110001", "600001", "700001"],
-      news_time_window_days: 7,
-      plans_time_window_days: 30,
-      deactivation_window_days: 7,
+      news_time_window_days: windowDays,
+      plans_time_window_days: windowDays,
+      deactivation_window_days: windowDays,
       max_items_per_section: 10,
     };
 
@@ -142,7 +151,7 @@ export default function DashboardPage() {
       setErrorMsg(String(err));
       setStatus("error");
     }
-  }, [status]);
+  }, [status, windowDays]);
 
   const suggestedQuestions = generateSuggestedQuestions(report);
 
@@ -167,6 +176,23 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Time window selector */}
+            <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+              {WINDOW_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setWindowDays(opt.value)}
+                  disabled={status === "running"}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                    windowDays === opt.value
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             {report && (
               <PDFDownloadButton
                 reportId={report.reportId}
@@ -184,7 +210,7 @@ export default function DashboardPage() {
               ) : (
                 <Play className="w-3.5 h-3.5 mr-1.5" />
               )}
-              {status === "running" ? "Generating…" : "Run Daily Report"}
+              {status === "running" ? "Generating…" : "Run Report"}
             </Button>
           </div>
         </div>
