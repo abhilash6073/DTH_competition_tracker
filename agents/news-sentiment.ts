@@ -78,7 +78,9 @@ async function processEntity(
   config: RunConfig
 ): Promise<CompetitorNewsItem[]> {
   const raw = await fetchCompetitorNews(entity.name, config.news_time_window_days);
+  console.log(`[News Agent] Fetch for ${entity.name}: ${raw.results.length} results found (noResults: ${raw.noResults})`);
   if (raw.noResults) return [];
+
 
   const deduped = deduplicateResults(raw.results);
   const limited = deduped.slice(0, config.max_items_per_section);
@@ -132,6 +134,9 @@ export async function runNewsSentimentAgent(
   let entities = entityCategory
     ? allEntities.filter((e) => e.type === entityCategory)
     : allEntities;
+
+  console.log(`[News Agent] Category: ${categoryLabel}, Entities to process: ${entities.length}`);
+
 
   // Apply focus filter if specified
   if (config.focus_entities?.length) {

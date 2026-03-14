@@ -105,7 +105,9 @@ async function processEntity(
     `${entity.name} new plan feature launch announcement`,
     config.plans_time_window_days
   );
+  console.log(`[PM Agent] Fetch for ${entity.name}: ${raw.results.length} results found (noResults: ${raw.noResults})`);
   if (raw.noResults) return [];
+
 
   const deduped = deduplicateResults(raw.results);
   const limited = deduped.slice(0, 5);
@@ -158,6 +160,9 @@ export async function runPMAnalystAgent(
   let entities = entityCategory
     ? allEntities.filter((e) => e.type === entityCategory)
     : allEntities;
+
+  console.log(`[PM Agent] Category: ${categoryLabel}, Entities to process: ${entities.length}`);
+
 
   if (config.focus_entities?.length) {
     entities = entities.filter((e) =>
