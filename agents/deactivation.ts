@@ -26,7 +26,15 @@ Rules:
 - Never fabricate deactivation numbers. If internal data is not provided, use placeholder analysis.
 - Provide a concrete recommended action for Tata Play.
 
-Return valid JSON.`;
+Return valid JSON:
+{
+  "correlationLabel": "correlation|causal hypothesis|no link",
+  "deactivationDelta": 0,
+  "causalHypothesis": "...",
+  "correlationVsCausationLabel": "...",
+  "confidence": "high|medium|low",
+  "recommendedAction": "..."
+}`;
 
 const EVENT_TYPES: { type: EventType; query: string }[] = [
   { type: "exam", query: "board exams JEE NEET CBSE state board schedule India" },
@@ -93,23 +101,15 @@ Internal Deactivation Context:
 - Average daily deactivations: ${avgDeactivations.toFixed(0)} (based on ${regionData.length} data points)
 - Data points available: ${regionData.length > 0 ? "Yes" : "No (simulated)"}
 
-Analyze whether this event correlates with or causes changes in Tata Play deactivations in this region.
-
-Return valid JSON only:
-{
-  "correlationLabel": "correlation|causal hypothesis|no link",
-  "deactivationDelta": 0,
-  "causalHypothesis": "...",
-  "correlationVsCausationLabel": "...",
-  "confidence": "high|medium|low",
-  "recommendedAction": "..."
-}`,
+Analyze whether this event correlates with or causes changes in Tata Play deactivations in this region. Return valid JSON only.`,
       400
     );
 
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const parsed = JSON.parse(match[0]);
+
+    if (parsed.correlationLabel === "no link") return null;
 
     return {
       id: uuidv4(),
@@ -126,6 +126,7 @@ Return valid JSON only:
     return null;
   }
 }
+
 
 /**
  * Generate mock deactivation data when internal API is not configured.
@@ -190,9 +191,12 @@ export async function runDeactivationAgent(
 
     const events = await buildExternalEvents(region, config.deactivation_window_days);
 
-    for (const event of events) {
-      const correlation = await correlateEvent(event, deactivationData, region);
-      if (correlation) correlations.push(correlation);
+    const results = await Promise.all(
+      events.map(event => correlateEvent(event, deactivationData, region))
+    );
+
+    for (const res of results) {
+      if (res) correlations.push(res);
     }
   }
 
