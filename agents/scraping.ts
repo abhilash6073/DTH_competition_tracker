@@ -117,7 +117,7 @@ export async function fetchExternalEvents(
   region: string,
   windowDays: number
 ): Promise<RawSearchResult> {
-  const dateFilter = exaDateFilter(windowDays);
+  const dateFilter = exaDateFilter(180); // Widen to 180 days to find schedules published in advance
   const query = `${eventType} ${region} India ${new Date().getFullYear()} schedule calendar`;
 
   reactLog({
