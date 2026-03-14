@@ -258,7 +258,7 @@ export default function DashboardPage() {
           <MetricCard
             title="News Items"
             value={report?.competitor_news?.length ?? "—"}
-            subtitle={`Last ${report?.config?.news_time_window_days ?? 7} days`}
+            subtitle={`Last ${report?.config?.news_time_window_days ?? windowDays} days`}
             icon={<Newspaper className="w-3.5 h-3.5" />}
             badge={status === "done" ? "Live" : undefined}
             badgeVariant="secondary"
