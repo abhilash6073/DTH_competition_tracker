@@ -385,17 +385,22 @@ export function PricingTable({ packs }: Props) {
                       {/* Channel count — clickable if channel list exists */}
                       <TableCell className="text-right text-xs">
                         {pack.totalChannels ? (
-                          <button
-                            onClick={() => setSelectedPack(pack)}
-                            className={`tabular-nums rounded px-1.5 py-0.5 transition-colors ${
-                              hasChannelList
-                                ? "text-primary font-semibold hover:bg-primary/10 cursor-pointer underline underline-offset-2 decoration-dotted"
-                                : "text-foreground cursor-default"
-                            }`}
-                            title={hasChannelList ? "Click to see channel list" : "Channel list not available"}
-                          >
-                            {pack.totalChannels}
-                          </button>
+                          hasChannelList ? (
+                            <button
+                              onClick={() => setSelectedPack(pack)}
+                              className="tabular-nums rounded px-1.5 py-0.5 transition-colors text-primary font-semibold hover:bg-primary/10 cursor-pointer underline underline-offset-2 decoration-dotted"
+                              title="Click to see channel list"
+                            >
+                              {pack.totalChannels}
+                            </button>
+                          ) : (
+                            <span
+                              className="tabular-nums text-foreground cursor-default"
+                              title="Channel list not available"
+                            >
+                              {pack.totalChannels}
+                            </span>
+                          )
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
